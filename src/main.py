@@ -32,7 +32,7 @@ import logging
 
 from bme280 import BME280
 from fonts.ttf import RobotoMedium as UserFont
-from PIL import Image, ImageDraw, ImageFont
+# from PIL import Image, ImageDraw, ImageFont
 from pms5003 import PMS5003
 from pms5003 import ReadTimeoutError as pmsReadTimeoutError
 
@@ -72,10 +72,10 @@ WIDTH = st7735.width
 HEIGHT = st7735.height
 
 # Set up canvas and font
-img = Image.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
-draw = ImageDraw.Draw(img)
+# img = Image.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
+# draw = ImageDraw.Draw(img)
 font_size = 20
-font = ImageFont.truetype(UserFont, font_size)
+# font = ImageFont.truetype(UserFont, font_size)
 
 message = ""
 
@@ -106,7 +106,7 @@ def display_text(variable, data, unit):
         draw.rectangle((i, line_y, i + 1, line_y + 1), (0, 0, 0))
     # Write the text at the top in black
     draw.text((0, 0), message, font=font, fill=(0, 0, 0))
-    st7735.display(img)
+    # st7735.display(img)
 
 
 # Get the temperature of the CPU for compensation
