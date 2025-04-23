@@ -20,7 +20,7 @@ variables = ["temperature",
              "pm10"]
 
 data = {
-  "hw_id": mac,
+  "hw_id": ':'.join(f'{(mac >> (8 * i)) & 0xFF:02X}' for i in reversed(range(6))),
   "sensor_count": 10,
   "sensor_descriptions": variables
 }
