@@ -3,7 +3,8 @@ import utils
 import requests
 import paho.mqtt.client as mqtt
 from uuid import getnode as get_mac
-mac = get_mac()
+mac_int = get_mac()
+mac_str = ':'.join(f'{(mac_int >> (8 * i)) & 0xFF:02X}' for i in reversed(range(6)))
 
 url = "http://" + utils.ENV_VARS.MQTT_BROKER_HOST + ":8000/discover-module"
 
@@ -20,7 +21,7 @@ variables = ["temperature",
              "pm10"]
 
 data = {
-  "hw_id": ':'.join(f'{(mac >> (8 * i)) & 0xFF:02X}' for i in reversed(range(6))),
+  "hw_id": mac_str,
   "sensor_count": 10,
   "sensor_descriptions": variables
 }
@@ -42,7 +43,6 @@ mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqttc.on_connect = on_connect
 mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, 60)
 mqttc.loop_start()
-mac = get_mac()
 
 #!/usr/bin/env python3
 
@@ -266,7 +266,7 @@ try:
                 data = float(data.pm_ug_per_m3(10))
                 # display_text(variables[mode], data, unit)
         
-        msg_info = mqttc.publish(f"sensor_service/${mac}/${mode}", f"${data}:${data}")
+        msg_info = mqttc.publish(f"sensor_service/{mac_str}/{mode}", f"{data}:{data}")
         msg_info.wait_for_publish()
                 
 
