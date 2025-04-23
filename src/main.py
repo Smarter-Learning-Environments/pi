@@ -171,7 +171,9 @@ for v in variables:
 try:
     while True:
         proximity = ltr559.get_proximity()
-        time.sleep(4)
+        for i in range(4):
+            time.sleep(1)
+            pms5003.read()
         mode += 1
         mode %= len(variables)
 
