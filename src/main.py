@@ -30,6 +30,8 @@ response = requests.post(url, json=data)
 if(response.status_code == 200 or response.status_code == 409):
     print("Healthy connection to backend")
 else:
+    print(response.status_code)
+    print(response.text)
     print("Backend discovery failed, exiting...")
     exit(1)
 
