@@ -41,7 +41,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 mqttc.on_connect = on_connect
-mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, 60)
+mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
 mqttc.loop_start()
 
 #!/usr/bin/env python3
@@ -268,6 +268,8 @@ try:
         
         msg_info = mqttc.publish(f"sensor_service/{mac_str}/{mode}", f"{data}:{data}")
         msg_info.wait_for_publish()
+        print(f"sensor_service/{mac_str}/{mode}")
+        print(f"{data}:{data}")
                 
 
 # Exit cleanly
