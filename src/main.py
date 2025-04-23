@@ -172,6 +172,8 @@ try:
     while True:
         proximity = ltr559.get_proximity()
         time.sleep(4)
+        mode += 1
+        mode %= len(variables)
 
         # If the proximity crosses the threshold, toggle the mode
         # if time.time() - last_page > delay:
