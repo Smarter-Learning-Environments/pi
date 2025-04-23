@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 from uuid import getnode as get_mac
 mac = get_mac()
 
-url = utils.ENV_VARS.MQTT_BROKER_HOST + "/discover-module"
+url = "http://" + utils.ENV_VARS.MQTT_BROKER_HOST + "/discover-module"
 
 # Create a values dict to store the data
 variables = ["temperature",
