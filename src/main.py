@@ -270,10 +270,16 @@ try:
                 data = float(data.pm_ug_per_m3(10))
                 # display_text(variables[mode], data, unit)
         
-        msg_info = mqttc.publish(f"sensor_service/{mac_str}/{mode}", f"{data}:{data}")
-        msg_info.wait_for_publish()
-        print(f"sensor_service/{mac_str}/{mode}")
-        print(f"{data}:{data}")
+        try:
+            msg_info = mqttc.publish(f"sensor_service/{mac_str}/{mode}", f"{data}:{data}")
+            msg_info.wait_for_publish()
+            print(f"sensor_service/{mac_str}/{mode}")
+            print(f"{data}:{data}")
+        except:
+            print("Could not publish...")
+            mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
+
+            
                 
 
 # Exit cleanly
