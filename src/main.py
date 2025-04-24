@@ -277,7 +277,10 @@ try:
             print(f"{data}:{data}")
         except:
             print("Could not publish...")
-            mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
+            try:
+                mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
+            except:
+                print("Could not reconnect...")
 
             
                 
