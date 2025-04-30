@@ -1,4 +1,5 @@
 import os
+from uuid import getnode as get_mac
 # from enum import StrEnum
 
 class ENV_VARS:
@@ -9,3 +10,6 @@ class ENV_VARS:
     except:
         print('Please set env vars!')
         exit(1)
+    URL = "http://" + MQTT_BROKER_HOST + ":8000/discover-module"
+    MAC_STR = ':'.join(f'{(get_mac() >> (8 * i)) & 0xFF:02X}' for i in reversed(range(6)))
+    

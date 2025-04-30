@@ -1,12 +1,23 @@
+import sys
 import time
 import utils
+import logging
 import requests
+import statistics
 import paho.mqtt.client as mqtt
-from uuid import getnode as get_mac
-mac_int = get_mac()
-mac_str = ':'.join(f'{(mac_int >> (8 * i)) & 0xFF:02X}' for i in reversed(range(6)))
 
-url = "http://" + utils.ENV_VARS.MQTT_BROKER_HOST + ":8000/discover-module"
+try:
+    # Transitional fix for breaking change in LTR559
+    from ltr559 import LTR559
+    ltr559 = LTR559()
+except ImportError:
+    import ltr559
+
+from bme280 import BME280
+from enviroplus import gas
+from pms5003 import PMS5003
+from pms5003 import ReadTimeoutError as pmsReadTimeoutError
+
 
 # Create a values dict to store the data
 variables = ["temperature",
@@ -20,13 +31,19 @@ variables = ["temperature",
              "pm25",
              "pm10"]
 
-data = {
-  "hw_id": mac_str,
-  "sensor_count": 10,
+sensor_count = 10
+
+json = {
+  "hw_id": utils.ENV_VARS.MAC_STR,
+  "sensor_count": sensor_count,
   "sensor_descriptions": variables
 }
 
-response = requests.post(url, json=data)
+num_readings_per_publish = 60 # 1 sample per 10 seconds, 10 minute intervals
+
+readings = [[0 for _ in range(sensor_count)] for _ in range(num_readings_per_publish)]
+
+response = requests.post(utils.ENV_VARS.URL, json=json)
 
 if(response.status_code == 200 or response.status_code == 409):
     print("Healthy connection to backend")
@@ -44,37 +61,12 @@ mqttc.on_connect = on_connect
 mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
 mqttc.loop_start()
 
-#!/usr/bin/env python3
-
-import colorsys
-import sys
-import time
-
-import st7735
-
-try:
-    # Transitional fix for breaking change in LTR559
-    from ltr559 import LTR559
-    ltr559 = LTR559()
-except ImportError:
-    import ltr559
-
-import logging
-
-from bme280 import BME280
-# from fonts.ttf import RobotoMedium as UserFont
-# from PIL import Image, ImageDraw, ImageFont
-from pms5003 import PMS5003
-from pms5003 import ReadTimeoutError as pmsReadTimeoutError
-
-from enviroplus import gas
-
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
     level=logging.INFO,
     datefmt="%Y-%m-%d %H:%M:%S")
 
-logging.info("""all-in-one.py - Displays readings from all of Enviro plus' sensors
+logging.info("""
 
 Press Ctrl+C to exit!
 
@@ -85,60 +77,6 @@ bme280 = BME280()
 
 # PMS5003 particulate sensor
 pms5003 = PMS5003()
-
-# Create ST7735 LCD display class
-# st7735 = st7735.ST7735(
-#     port=0,
-#     cs=1,
-#     dc="GPIO9",
-#     backlight="GPIO12",
-#     rotation=270,
-#     spi_speed_hz=10000000
-# )
-
-# Initialize display
-# st7735.begin()
-
-# WIDTH = st7735.width
-# HEIGHT = st7735.height
-
-# Set up canvas and font
-# img = Image.new("RGB", (WIDTH, HEIGHT), color=(0, 0, 0))
-# draw = ImageDraw.Draw(img)
-# font_size = 20
-# font = ImageFont.truetype(UserFont, font_size)
-
-# message = ""
-
-# The position of the top bar
-# top_pos = 25
-
-
-# Displays data and text on the 0.96" LCD
-# def display_text(variable, data, unit):
-#     # Maintain length of list
-#     values[variable] = values[variable][1:] + [data]
-#     # Scale the values for the variable between 0 and 1
-#     vmin = min(values[variable])
-#     vmax = max(values[variable])
-#     colours = [(v - vmin + 1) / (vmax - vmin + 1) for v in values[variable]]
-#     # Format the variable name and value
-#     message = f"{variable[:4]}: {data:.1f} {unit}"
-#     logging.info(message)
-#     draw.rectangle((0, 0, WIDTH, HEIGHT), (255, 255, 255))
-#     for i in range(len(colours)):
-#         # Convert the values to colours from red to blue
-#         colour = (1.0 - colours[i]) * 0.6
-#         r, g, b = [int(x * 255.0) for x in colorsys.hsv_to_rgb(colour, 1.0, 1.0)]
-#         # Draw a 1-pixel wide rectangle of colour
-#         draw.rectangle((i, top_pos, i + 1, HEIGHT), (r, g, b))
-#         # Draw a line graph in black
-#         line_y = HEIGHT - (top_pos + (colours[i] * (HEIGHT - top_pos))) + top_pos
-#         draw.rectangle((i, line_y, i + 1, line_y + 1), (0, 0, 0))
-#     # Write the text at the top in black
-#     draw.text((0, 0), message, font=font, fill=(0, 0, 0))
-#     # st7735.display(img)
-
 
 # Get the temperature of the CPU for compensation
 def get_cpu_temperature():
@@ -154,137 +92,124 @@ factor = 2.25
 
 cpu_temps = [get_cpu_temperature()] * 5
 
-delay = 0.5  # Debounce the proximity tap
-mode = 0     # The starting mode
-last_page = 0
-light = 1
+sensor = 0     # The starting mode
 
-
-
-values = {}
-
-for v in variables:
-    # values[v] = [1] * WIDTH
-    values[v] = [1]
+def publish_data(data, sensor): 
+    try:
+        msg_info = mqttc.publish(f"sensor_service/{utils.ENV_VARS.MAC_STR}/{sensor}", f"{data}:{data}")
+        msg_info.wait_for_publish()
+        print(f"sensor_service/{utils.ENV_VARS.MAC_STR}/{sensor}")
+        print(f"{data}:{data}")
+    except:
+        print("Could not publish...")
+        try:
+            mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
+        except:
+            print("Could not reconnect...")
 
 # The main loop
 try:
     while True:
-        proximity = ltr559.get_proximity()
-        for i in range(4):
+        # poll sensors
+        for i in range(num_readings_per_publish):
             time.sleep(1)
-            pms5003.read()
-        mode += 1
-        mode %= len(variables)
+            sensor += 1
+            sensor %= len(variables)
+            data = 0
 
-        # If the proximity crosses the threshold, toggle the mode
-        # if time.time() - last_page > delay:
-        #     mode += 1
-        #     mode %= len(variables)
-        #     last_page = time.time()
+            # One mode for each variable
+            if sensor == 0:
+                # variable = "temperature"
+                unit = "°C"
+                cpu_temp = get_cpu_temperature()
+                # Smooth out with some averaging to decrease jitter
+                cpu_temps = cpu_temps[1:] + [cpu_temp]
+                avg_cpu_temp = sum(cpu_temps) / float(len(cpu_temps))
+                raw_temp = bme280.get_temperature()
+                data = raw_temp - ((avg_cpu_temp - raw_temp) / factor)
+                # display_text(variables[mode], data, unit)
 
-        # One mode for each variable
-        if mode == 0:
-            # variable = "temperature"
-            unit = "°C"
-            cpu_temp = get_cpu_temperature()
-            # Smooth out with some averaging to decrease jitter
-            cpu_temps = cpu_temps[1:] + [cpu_temp]
-            avg_cpu_temp = sum(cpu_temps) / float(len(cpu_temps))
-            raw_temp = bme280.get_temperature()
-            data = raw_temp - ((avg_cpu_temp - raw_temp) / factor)
-            # display_text(variables[mode], data, unit)
+            if sensor == 1:
+                # variable = "pressure"
+                unit = "hPa"
+                data = bme280.get_pressure()
+                # display_text(variables[mode], data, unit)
 
-        if mode == 1:
-            # variable = "pressure"
-            unit = "hPa"
-            data = bme280.get_pressure()
-            # display_text(variables[mode], data, unit)
+            if sensor == 2:
+                # variable = "humidity"
+                unit = "%"
+                data = bme280.get_humidity()
+                # display_text(variables[mode], data, unit)
 
-        if mode == 2:
-            # variable = "humidity"
-            unit = "%"
-            data = bme280.get_humidity()
-            # display_text(variables[mode], data, unit)
-
-        if mode == 3:
-            # variable = "light"
-            unit = "Lux"
-            if proximity < 10:
+            if sensor == 3:
+                # variable = "light"
+                unit = "Lux"
                 data = ltr559.get_lux()
-            else:
-                data = 1
-            # display_text(variables[mode], data, unit)
-
-        if mode == 4:
-            # variable = "oxidised"
-            unit = "kO"
-            data = gas.read_all()
-            data = data.oxidising / 1000
-            # display_text(variables[mode], data, unit)
-
-        if mode == 5:
-            # variable = "reduced"
-            unit = "kO"
-            data = gas.read_all()
-            data = data.reducing / 1000
-            # display_text(variables[mode], data, unit)
-
-        if mode == 6:
-            # variable = "nh3"
-            unit = "kO"
-            data = gas.read_all()
-            data = data.nh3 / 1000
-            # display_text(variables[mode], data, unit)
-
-        if mode == 7:
-            # variable = "pm1"
-            unit = "ug/m3"
-            try:
-                data = pms5003.read()
-            except pmsReadTimeoutError:
-                logging.warning("Failed to read PMS5003")
-            else:
-                data = float(data.pm_ug_per_m3(1.0))
                 # display_text(variables[mode], data, unit)
 
-        if mode == 8:
-            # variable = "pm25"
-            unit = "ug/m3"
-            try:
-                data = pms5003.read()
-            except pmsReadTimeoutError:
-                logging.warning("Failed to read PMS5003")
-            else:
-                data = float(data.pm_ug_per_m3(2.5))
+            if sensor == 4:
+                # variable = "oxidised"
+                unit = "kO"
+                data = gas.read_all()
+                data = data.oxidising / 1000
                 # display_text(variables[mode], data, unit)
 
-        if mode == 9:
-            # variable = "pm10"
-            unit = "ug/m3"
-            try:
-                data = pms5003.read()
-            except pmsReadTimeoutError:
-                logging.warning("Failed to read PMS5003")
-            else:
-                data = float(data.pm_ug_per_m3(10))
+            if sensor == 5:
+                # variable = "reduced"
+                unit = "kO"
+                data = gas.read_all()
+                data = data.reducing / 1000
                 # display_text(variables[mode], data, unit)
+
+            if sensor == 6:
+                # variable = "nh3"
+                unit = "kO"
+                data = gas.read_all()
+                data = data.nh3 / 1000
+                # display_text(variables[mode], data, unit)
+
+            if sensor == 7:
+                # variable = "pm1"
+                unit = "ug/m3"
+                try:
+                    data = pms5003.read()
+                except pmsReadTimeoutError:
+                    logging.warning("Failed to read PMS5003")
+                else:
+                    data = float(data.pm_ug_per_m3(1.0))
+                    # display_text(variables[mode], data, unit)
+
+            if sensor == 8:
+                # variable = "pm25"
+                unit = "ug/m3"
+                try:
+                    data = pms5003.read()
+                except pmsReadTimeoutError:
+                    logging.warning("Failed to read PMS5003")
+                else:
+                    data = float(data.pm_ug_per_m3(2.5))
+                    # display_text(variables[mode], data, unit)
+
+            if sensor == 9:
+                # variable = "pm10"
+                unit = "ug/m3"
+                try:
+                    data = pms5003.read()
+                except pmsReadTimeoutError:
+                    logging.warning("Failed to read PMS5003")
+                else:
+                    data = float(data.pm_ug_per_m3(10))
+                    # display_text(variables[mode], data, unit)
+
+            readings[sensor][i] = data
         
-        try:
-            msg_info = mqttc.publish(f"sensor_service/{mac_str}/{mode}", f"{data}:{data}")
-            msg_info.wait_for_publish()
-            print(f"sensor_service/{mac_str}/{mode}")
-            print(f"{data}:{data}")
-        except:
-            print("Could not publish...")
-            try:
-                mqttc.connect(utils.ENV_VARS.MQTT_BROKER_HOST, 1883, keepalive=30)
-            except:
-                print("Could not reconnect...")
-
+        # report averages
+        for i in range(sensor_count):
+            publish_data(statistics.mean(readings[i]))
             
-                
 
+
+                
 # Exit cleanly
 except KeyboardInterrupt:
     sys.exit(0)
