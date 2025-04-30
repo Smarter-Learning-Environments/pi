@@ -201,6 +201,7 @@ try:
                     data = float(data.pm_ug_per_m3(10))
                     # display_text(variables[mode], data, unit)
 
+            print(f"read sensor {sensor}:{data}")
             readings[sensor][i] = data
         
         # report averages
