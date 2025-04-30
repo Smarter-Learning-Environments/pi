@@ -111,7 +111,7 @@ def publish_data(data, sensor):
 try:
     while True:
         # poll sensors
-        for i in range(num_readings_per_publish):
+        for i in range(num_readings_per_publish * sensor_count):
             time.sleep(1)
             sensor += 1
             sensor %= len(variables)
@@ -206,7 +206,7 @@ try:
         
         # report averages
         for i in range(sensor_count):
-            publish_data(statistics.mean(readings[i]))
+            publish_data(data=statistics.mean(readings[i]), sensor=i)
             
 
 
