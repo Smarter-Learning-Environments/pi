@@ -41,7 +41,7 @@ json = {
 
 num_readings_per_publish = 60 # 1 sample per 10 seconds, 10 minute intervals
 
-readings = [[0 for _ in range(sensor_count)] for _ in range(num_readings_per_publish)]
+readings = [[0 for _ in range(num_readings_per_publish)] for _ in range(sensor_count)]
 
 response = requests.post(utils.ENV_VARS.URL, json=json)
 
@@ -202,7 +202,7 @@ try:
                     # display_text(variables[mode], data, unit)
 
             print(f"read sensor {sensor}:{data}")
-            readings[sensor][i] = data
+            readings[sensor][int(i / sensor_count)] = data
         
         # report averages
         for i in range(sensor_count):
